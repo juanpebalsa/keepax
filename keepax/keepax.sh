@@ -87,7 +87,6 @@ refresh_cache() {
 
 service() {
     resource=${1}
-
     if [[ ${resource} == 'uptime' ]]; then
 	if [[ ${rcode} == 0 ]]; then
 	    res=`sudo ps -p `${PID_FILE}` -o etimes -h`
@@ -166,36 +165,38 @@ while getopts "s::a:sj:uphvt:" OPTION; do
     esac
 done
 
-if [[ "${SECTION}" =~ (vrrp) ]]; then
+if [[ "${SECTION}" == "service" ]]; then
+    rval=$( service "${ARGS[@]:1}" )  
+elif [[ "${SECTION}" == "vrrp" ]]; then
     if [[ ${ARGS} == 'list' ]]; then
-       rval=$( vrrp_list "${ARGS[@]:1}" )
+	rval=$( vrrp_list "${ARGS[@]:1}" )
     elif [[ ${ARGS} == 'data' ]]; then
-       rval=$( vrrp_data "${ARGS[@]:1}" )
+	rval=$( vrrp_data "${ARGS[@]:1}" )
     elif [[ ${ARGS} == 'stats' ]]; then
-       rval=$( vrrp_stats "${ARGS[@]:1}" )
-    fi 
-    rcode="${?}"
+	rval=$( vrrp_stats "${ARGS[@]:1}" )
+    fi
 else
     zabbix_not_support
 fi
+rcode="${?}"
 
 if [[ ${JSON} -eq 1 ]]; then
     echo '{'
     echo '   "data":['
     count=1
     while read line; do
-       if [[ ${line} != '' ]]; then
+	if [[ ${line} != '' ]]; then
             IFS="|" values=(${line})
             output='{ '
             for val_index in ${!values[*]}; do
-               output+='"'{#${JSON_ATTR[${val_index}]:-${val_index}}}'":"'${values[${val_index}]}'"'
-               if (( ${val_index}+1 < ${#values[*]} )); then
-                     output="${output}, "
-	       fi
+		output+='"'{#${JSON_ATTR[${val_index}]:-${val_index}}}'":"'${values[${val_index}]}'"'
+		if (( ${val_index}+1 < ${#values[*]} )); then
+                    output="${output}, "
+		fi
             done
             output+=' }'
 	    if (( ${count} < `echo ${rval}|wc -l` )); then
-	       output="${output},"
+		output="${output},"
             fi
             echo "      ${output}"
 	fi
