@@ -86,11 +86,11 @@ refresh_cache() {
 }
 
 service() {
-    resource=${1}
+    resource="${1}"
+
+    pid=`cat ${PID_FILE}`
     if [[ ${resource} == 'uptime' ]]; then
-	if [[ ${rcode} == 0 ]]; then
-	    res=`sudo ps -p `${PID_FILE}` -o etimes -h`
-	fi
+	res=`sudo ps -p ${pid} -o etimes -h`
     fi
     echo ${res:-0}
     return 0
@@ -166,7 +166,7 @@ while getopts "s::a:sj:uphvt:" OPTION; do
 done
 
 if [[ "${SECTION}" == "service" ]]; then
-    rval=$( service "${ARGS[@]:1}" )  
+    rval=$( service "${ARGS[@]}" )  
 elif [[ "${SECTION}" == "vrrp" ]]; then
     if [[ ${ARGS} == 'list' ]]; then
 	rval=$( vrrp_list "${ARGS[@]:1}" )
