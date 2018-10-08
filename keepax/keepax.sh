@@ -61,6 +61,69 @@ zabbix_not_support() {
     echo "ZBX_NOTSUPPORTED"
     exit 1
 }
+
+refresh_cache() {
+    [[ -d ${CACHE_DIR} ]] || mkdir -p ${CACHE_DIR}
+    file="${CACHE_DIR}/data"
+    if [[ ! -f "${file}" ]]; then 
+        touch -d "$(( ${CACHE_TTL}+1 )) minutes ago" "${file}"
+    fi
+
+    if [[ $(( `stat -c '%Y' "${file}" 2>/dev/null`+60*${CACHE_TTL} )) -le ${TIMESTAMP} ]]; then
+	[[ -f "${PID_FILE}" ]] || return 1
+	sudo kill -USR1 $(cat "${PID_FILE}")
+	sudo kill -USR2 $(cat "${PID_FILE}")
+	[[ -f "/tmp/keepalived.data" && -f "/tmp/keepalived.stats" ]] || return 1 
+	echo "### START DATA ###" > "${file}.tmp"
+        sudo cat "/tmp/keepalived.data" >> "${file}.tmp"
+        echo "### END DATA ###" >> "${file}.tmp"
+        echo "### START STATS ###" >> "${file}.tmp"
+	sudo cat "/tmp/keepalived.stats" >> "${file}.tmp"
+        echo "### END STATS ###" >> "${file}.tmp"
+        sudo mv "${file}.tmp" "${file}"
+    fi
+    echo "${file}"
+}
+
+vrrp_list() {
+    file=$( refresh_cache )
+    [[ ${?} == 0 ]] || return 1
+
+    rval=`egrep "VRRP Instance = " ${file} | awk -F'=' '{print $2}' | awk '{$1=$1};1' | sort | uniq`
+    echo "${rval:-0}"
+}
+
+vrrp_data() {
+    instance="${1}"
+    attr="${2}"
+
+    file=$( refresh_cache )
+    [[ ${?} == 0 ]] || return 1
+
+    data=`sed '/### START DATA ###/,/### END DATA ###/{//!b};d' ${file}`
+    rval=`echo "${data}" | sed "/VRRP Instance = ${instance}/,/VRRP Instance = */{//!b};d" | \
+	  grep "${attr}" | awk -F'=' '{print $2}' | awk '{$1=$1};1'`
+
+    if [[ "${attr}" == "Last transition" ]]; then
+        rval=`echo "${rval}" | sed -e 's/(.*)//'`
+    fi
+    echo "${rval:-0}"
+}
+
+vrrp_stats() {
+    instance="${1}"
+    attr="${2}"
+
+    file=$( refresh_cache )
+    [[ ${?} == 0 ]] || return 1
+
+    data=`sed '/### START STATS ###/,/### END STATS ###/{//!b};d' ${file}`
+    rval=`echo "${data}" | sed "/VRRP Instance: ${instance}/,/VRRP Instance: */{//!b};d" | \
+	  grep "${attr}" | awk -F':' '{print $2}' | awk '{$1=$1};1'`
+
+    echo "${rval:-0}"
+
+}
 #
 #################################################################################
 
@@ -75,12 +138,12 @@ while getopts "s::a:sj:uphvt:" OPTION; do
 	    ;;
         j)
             JSON=1
-            IFS=":" JSON_ATTR=(${OPTARG})
+            IFS=":" JSON_ATTR=( ${OPTARG} )
 	    IFS="${IFS_DEFAULT}"
             ;;
 	a)
-	    param=${OPTARG//p=}
-	    [[ -n ${param} ]] && SQL_ARGS[${#SQL_ARGS[*]}]=${param}
+	    param="${OPTARG//p=}"
+	    [[ -n ${param} ]] && ARGS[${#ARGS[*]}]="${param}"
 	    ;;
 	v)
 	    version
@@ -91,27 +154,14 @@ while getopts "s::a:sj:uphvt:" OPTION; do
     esac
 done
 
-refresh_cache() {
-    [[ -d ${CACHE_DIR} ]] || mkdir -p ${CACHE_DIR}
-    file="${CACHEDIR}/data.json"
-    [[ -f "${file}" ]] || touch "${file}"
-    if [[ $(( `stat -c '%Y' "${file}" 2>/dev/null`+60*${CACHE_TTL} )) -le ${TIMESTAMP} ]]; then
-	[[ -f "${PID_FILE}" ]] || zabbix_not_support
-	sudo kill -USR1 $(cat "${PID_FILE}")
-	sudo kill -USR2 $(cat "${PID_FILE}")
-	sudo cp /tmp/keepalived.{data,stats} "${CACHEDIR}"
-	[[ -f "${CACHEDIR}/keepalived.{data,stats}" ]] || zabbix_not_support 
-	content_data=`cat ${CACHEDIR}/keepalived.data`
-	content_stats=`cat ${CACHEDIR}/keepalived.stats`
-	while read line; do
-	    
-	done < <(echo "${content_data}" | grep "VRRP Instance" | awk -F'=' '{print $2}')
-    fi
-    echo "${file}"
-}
-
-refresh_cache
-if [[ "${SECTION}" =~ (vrrp_instances) ]]; then
+if [[ "${SECTION}" =~ (vrrp) ]]; then
+    if [[ ${ARGS} == 'list' ]]; then
+       rval=$( vrrp_list "${ARGS[@]:1}" )
+    elif [[ ${ARGS} == 'data' ]]; then
+       rval=$( vrrp_data "${ARGS[@]:1}" )
+    elif [[ ${ARGS} == 'stats' ]]; then
+       rval=$( vrrp_stats "${ARGS[@]:1}" )
+    fi 
     rcode="${?}"
 else
     zabbix_not_support
@@ -138,7 +188,7 @@ if [[ ${JSON} -eq 1 ]]; then
             echo "      ${output}"
 	fi
         let "count=count+1"
-    done <<< ${rval}
+    done < <(echo "${rval}")
     echo '   ]'
     echo '}'
 else
