@@ -14,7 +14,7 @@ if [[ -f "${SCRIPT_CONFIG}" ]]; then
 fi
 
 cp -rpv "${SOURCE_DIR}/keepax/keepax.sh"             "${PREFIX_DIR}/"
-cp -rpv "${SCRIPT_CONF}"                             "${PREFIX_DIR}/"
+cp -rpv "${SOURCE_DIR}/keepax/keepax.conf.example"   "${SCRIPT_CONFIG}"
 cp -rpv "${SOURCE_DIR}/keepax/zabbix_agentd.conf"    "${ZABBIX_DIR}/zabbix_agentd.d/keepax.conf"
 
 regex_array[0]="s|CACHE_DIR=.*|CACHE_DIR=\"${CACHE_DIR}\"|g"
