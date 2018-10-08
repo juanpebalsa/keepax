@@ -85,6 +85,18 @@ refresh_cache() {
     echo "${file}"
 }
 
+service() {
+    resource=${1}
+
+    if [[ ${resource} == 'uptime' ]]; then
+	if [[ ${rcode} == 0 ]]; then
+	    res=`sudo ps -p `${PID_FILE}` -o etimes -h`
+	fi
+    fi
+    echo ${res:-0}
+    return 0
+}
+
 vrrp_list() {
     file=$( refresh_cache )
     [[ ${?} == 0 ]] || return 1
